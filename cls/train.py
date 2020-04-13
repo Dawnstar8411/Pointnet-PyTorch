@@ -4,11 +4,12 @@ import shutil
 import time
 import warnings
 
-import numpy as np
 import torch
-import torch.backends.cudnn as cudnn
+import numpy as np
 import torch.nn.functional as F
+import torch.backends.cudnn as cudnn
 import torch.optim.lr_scheduler as lr_scheduler
+
 from path import Path
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -17,8 +18,8 @@ import models
 from config.args_pointnet_cls_train import *
 from datasets.modelnet_clc_loader import ModelNetDataset
 from utils import custom_transforms
-from utils.utils import AverageMeter, save_path_formatter
 from utils.loss_functions import feature_transform_regularizer
+from utils.utils import AverageMeter, save_path_formatter
 
 warnings.filterwarnings('ignore')
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -40,8 +41,6 @@ args.save_path.makedirs_p()
 print("=> will save everything to {}".format(args.save_path))
 
 print("2.Data Loading...")
-
-# normalize = custom_transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 
 train_transform = custom_transforms.Compose([
     custom_transforms.select_point_cloud(n_pts=args.n_pts),
@@ -68,7 +67,7 @@ val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_
 
 print("3.Creating Model")
 
-pointnet_cls = models.PointNet_cls(input_transform=True, feature_transform=True).to(device)
+pointnet_cls = models.PointNet_cls(K = 40,input_transform=True, feature_transform=True).to(device)
 if args.pretrained:
     print('=> using pre-trained weights for PoseNet')
     weights = torch.load(args.pretrained)
@@ -90,11 +89,11 @@ print("6. Create csvfile to save log information")
 
 with open(args.save_path / args.log_summary, 'w') as csvfile:
     csv_writer = csv.writer(csvfile, delimiter='\t')
-    csv_writer.writerow(['train_loss', 'validation_loss'])
+    csv_writer.writerow(['train_loss', 'Average precision'])
 
 with open(args.save_path / args.log_full, 'w') as csvfile:
     csv_writer = csv.writer(csvfile, delimiter='\t')
-    csv_writer.writerow(['total_loss', 'nll_loss', 'trans_loss', 'trans_feat_loss' 'mAP'])
+    csv_writer.writerow(['total_loss', 'nll_loss','trans_feat_loss','Average precision'])
 
 print("7. Start Training!")
 
@@ -135,12 +134,11 @@ def main():
 
         with open(args.save_path / args.log_full, 'a') as csvfile:
             csv_writer = csv.writer(csvfile, delimiter='\t')
-            csv_writer.writerow([losses[0], losses[1], losses[3]])
+            csv_writer.writerow([losses[0], losses[1], losses[3],errors[0]])
 
         print("\n---- [Epoch {}/{}] ----".format(epoch, args.epochs))
-        print("Train---Total loss:{}, Nll_loss:{}, Trans loss:{}, Trans_feat loss:{}".format(losses[0], losses[1],
-                                                                                             losses[2], losses[3]))
-        print("Valid---mAp:{}".format(errors[0]))
+        print("Train---Total loss:{}, Nll_loss:{} Trans_feat loss:{}".format(losses[0], losses[1], losses[2]))
+        print("Valid---Average Precision:{}".format(errors[0]))
 
         epoch_left = args.epochs - (epoch + 1)
         time_left = datetime.timedelta(seconds=epoch_left * (time.time() - start_time))
@@ -148,41 +146,40 @@ def main():
 
 
 def train(pointnet_cls, optimizer):
-    loss_names = ['total_loss', 'nll_loss', 'trans_loss', 'trans_feat_loss']
+    loss_names = ['total_loss', 'nll_loss', 'trans_feat_loss']
     losses = AverageMeter(i=len(loss_names), precision=4)
 
     pointnet_cls.train()
 
     for i, (points, label) in enumerate(train_loader):
-        targets, trans, trans_feat = pointnet_cls(points)
+        targets, trans_feat = pointnet_cls(points)
         loss_1 = F.nll_loss(label, targets)
-        loss_2 = feature_transform_regularizer(trans)
-        loss_3 = feature_transform_regularizer(trans_feat)
-
-        loss = loss_1 + loss_2 + loss_3
+        loss_2 = feature_transform_regularizer(trans_feat)
+        loss = loss_1 + 0.001 * loss_2
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        losses.update([loss.item(), loss_1.item(), loss_2.item(), loss_3.item()])
+        losses.update([loss.item(), loss_1.item(), loss_2.item()],args.batch_size)
 
     return losses.avg, loss_names
 
 
 @torch.no_grad()
 def validate(pointnet_cls):
-    error_names = ['mAP']
-    losses = AverageMeter(i=len(error_names), precision=4)
+    error_names = ['Average Precision']
+    errors = AverageMeter(i=len(error_names), precision=4)
 
     pointnet_cls.eval()
 
     for i, (points, label) in enumerate(val_loader):
-        targets, _, _ = pointnet_cls(points)
+        targets, _ = pointnet_cls(points)
 
+        pred_val = torch.argmax(targets,1)
+        correct = torch.sum(pred_val == label)
+        errors.update([correct.item()/args.batch_size],args.batch_size)
 
-        losses.update([])
-
-    return losses.avg, error_names
+    return errors.avg, error_names
 
 
 if __name__ == '__main__':
