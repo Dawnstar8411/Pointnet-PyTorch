@@ -1,7 +1,7 @@
 import os
 import sys
-from plyfile import PlyData, PlyElement, make2d, PlyParseError, PlyProperty
-from eulerangles import euler2mat
+from .plyfile import PlyData, PlyElement, make2d, PlyParseError, PlyProperty
+from .eulerangles import euler2mat
 import numpy as np
 import h5py
 import matplotlib.pyplot as plt

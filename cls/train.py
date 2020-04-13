@@ -50,8 +50,8 @@ train_transform = custom_transforms.Compose([
 ])
 
 valid_transform = custom_transforms.Compose([
-    custom_transforms.rotate_point_cloud(),
-    custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
+    #custom_transforms.rotate_point_cloud(),
+    #custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
     custom_transforms.ArrayToTensor(),
 ])
 
@@ -109,7 +109,7 @@ def main():
         if best_error < 0:
             best_error = decisive_error
 
-        is_best = decisive_error < best_error
+        is_best = decisive_error > best_error
         best_error = min(best_error, decisive_error)
 
         torch.save({

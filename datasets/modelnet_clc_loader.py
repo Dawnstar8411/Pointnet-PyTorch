@@ -1,5 +1,6 @@
 import h5py
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 
@@ -32,7 +33,7 @@ class ModelNetDataset(Dataset):
         if self.transform:
             points = self.transform(points)
 
-        return points, label
+        return torch.from_numpy(points), torch.from_numpy(label)
 
     def __len__(self):
         return len(self.data)
