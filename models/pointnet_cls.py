@@ -6,7 +6,7 @@ from .transform_nets import Transform_net
 
 
 class PointNet_cls(nn.Module):
-    def __init__(self, k=40, input_transform=True, feature_transform=True):
+    def __init__(self, K=40, input_transform=True, feature_transform=True):
         super(PointNet_cls, self).__init__()
         self.input_transform = input_transform
         self.feature_transform = feature_transform
@@ -14,22 +14,30 @@ class PointNet_cls(nn.Module):
         if self.input_transform:
             self.stn = Transform_net(k=3)
 
-        self.conv1 = torch.nn.conv1d(3, 64, 1)
-        self.conv2 = torch.nn.Conv1d(64, 128, 1)
-        self.conv3 = torch.nn.Conv1d(128, 1024, 1)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(1024)
+        self.conv1_1 = torch.nn.Conv1d(3, 64, 1)
+        self.bn1_1 = nn.BatchNorm1d(64)
+        self.conv1_2 = torch.nn.Conv1d(64, 64, 1)
+        self.bn1_2 = nn.BatchNorm1d(64)
 
         if self.feature_transform:
             self.fstn = Transform_net(k=64)
 
-        self.fc1 = nn.Linear(1024, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, k)
-        self.dropout = nn.Dropout(p=0.3)
-        self.bn4 = nn.BatchNorm1d(512)
-        self.bn5 = nn.BatchNorm1d(256)
+        self.conv2_1 = torch.nn.Conv1d(64, 64, 1)
+        self.bn2_1 = nn.BatchNorm1d(64)
+        self.conv2_2 = torch.nn.Conv1d(64, 128, 1)
+        self.bn2_2 = nn.BatchNorm1d(128)
+        self.conv2_3 = torch.nn.Conv1d(128, 1024, 1)
+        self.bn2_3 = nn.BatchNorm1d(1024)
+
+
+        self.fc3_1 = nn.Linear(1024, 512)
+        self.bn3_1 = nn.BatchNorm1d(512)
+        self.dropout3_1 = nn.Dropout(p=0.3)
+        self.fc3_2 = nn.Linear(512, 256)
+        self.bn3_2 = nn.BatchNorm1d(256)
+        self.dropout3_2 = nn.Dropout(p=0.3)
+        self.fc3_3 = nn.Linear(256, K)
+
         self.relu = nn.LeakyReLU()
 
     def forward(self, x):
@@ -41,7 +49,8 @@ class PointNet_cls(nn.Module):
         else:
             trans = None
 
-        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.bn1_1(self.conv1_1(x)))
+        x = self.relu(self.bn1_2(self.conv1_2(x)))
 
         if self.feature_transform:
             trans_feat = self.fstn(x)
@@ -51,16 +60,19 @@ class PointNet_cls(nn.Module):
         else:
             trans_feat = None
 
-        x = self.relu(self.bn2(self.conv2(x)))
-        x = self.bn3(self.conv3(x))
+        x = self.relu(self.bn2_1(self.conv2_1(x)))
+        x = self.relu(self.bn2_2(self.conv2_2(x)))
+        x = self.relu(self.bn2_3(self.conv2_3(x)))
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(-1, 1024)
 
-        x = self.relu(self.bn1(self.fc1(x)))
-        x = self.relu(self.bn2(self.dropout(self.fc2(x))))
-        x = self.fc3(x)
+        x = self.relu(self.bn3_1(self.fc3_1(x)))
+        x = self.dropout3_1(x)
+        x = self.relu(self.bn3_2(self.fc3_2(x)))
+        x = self.dropout3_2(x)
+        x = self.fc3_3(x)
         x = F.log_softmax(x, dim=1)
-        return x, trans, trans_feat
+        return x, trans_feat
 
     def init_weights(self):
         for m in self.modules():
