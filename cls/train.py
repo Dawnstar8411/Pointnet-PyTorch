@@ -63,7 +63,7 @@ print('{} samples found in valid scenes'.format(len(val_set)))
 
 train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.workers,
                           pin_memory=True)
-val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=args.wokers, pin_memory=True)
+val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
 
 print("3.Creating Model")
 
@@ -115,7 +115,7 @@ def main():
         torch.save({
             'epoch': epoch + 1,
             'state_dict': pointnet_cls.state_dict()
-        }, args.save_path / 'pointnet_cls{}.pth.tar'.format(epoch))
+        }, args.save_path / 'pointnet_cls_{}.pth.tar'.format(epoch))
 
         if is_best:
             shutil.copyfile(args.save_path / 'pointnet_cls_{}.pth.tar'.format(epoch),
@@ -134,7 +134,7 @@ def main():
 
         with open(args.save_path / args.log_full, 'a') as csvfile:
             csv_writer = csv.writer(csvfile, delimiter='\t')
-            csv_writer.writerow([losses[0], losses[1], losses[3],errors[0]])
+            csv_writer.writerow([losses[0], losses[1], losses[2],errors[0]])
 
         print("\n---- [Epoch {}/{}] ----".format(epoch, args.epochs))
         print("Train---Total loss:{}, Nll_loss:{} Trans_feat loss:{}".format(losses[0], losses[1], losses[2]))
@@ -152,8 +152,10 @@ def train(pointnet_cls, optimizer):
     pointnet_cls.train()
 
     for i, (points, label) in enumerate(train_loader):
+        label = torch.squeeze(label)
+        points,label = points.to(device).float(),label.to(device).long()
         targets, trans_feat = pointnet_cls(points)
-        loss_1 = F.nll_loss(label, targets)
+        loss_1 = F.nll_loss(targets,label)
         loss_2 = feature_transform_regularizer(trans_feat)
         loss = loss_1 + 0.001 * loss_2
 
@@ -173,6 +175,8 @@ def validate(pointnet_cls):
     pointnet_cls.eval()
 
     for i, (points, label) in enumerate(val_loader):
+        label = torch.squeeze(label)
+        points, label = points.to(device).float(), label.to(device).long()
         targets, _ = pointnet_cls(points)
 
         pred_val = torch.argmax(targets,1)

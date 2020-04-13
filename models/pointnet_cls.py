@@ -43,6 +43,7 @@ class PointNet_cls(nn.Module):
     def forward(self, x):
         if self.input_transform:
             trans = self.stn(x)
+
             x = x.transpose(2, 1)  # (batchsize, n_pts, 3)
             x = torch.bmm(x, trans)
             x = x.transpose(2, 1)  # (batchsize, 3, n_pts)

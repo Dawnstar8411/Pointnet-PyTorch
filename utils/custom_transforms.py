@@ -26,7 +26,7 @@ class rotate_point_cloud(object):
         rotation_angle = np.random.uniform() * 2 * np.pi
         cosval = np.cos(rotation_angle)
         sinval = np.sin(rotation_angle)
-        rotation_matrix = np.array([[cosval, 0, sinval]
+        rotation_matrix = np.array([[cosval, 0, sinval],
                                     [0, 1, 0],
                                     [-sinval, 0, cosval]])
         rotated_data = np.dot(points.reshape((-1, 3)), rotation_matrix)
@@ -48,7 +48,7 @@ class rotate_point_cloud_by_angle(object):
     def __call__(self, points):
         cosval = np.cos(self.rotation_angle)
         sinval = np.sin(self.rotation_angle)
-        rotation_matrix = np.array([[cosval, 0, sinval]
+        rotation_matrix = np.array([[cosval, 0, sinval],
                                     [0, 1, 0],
                                     [-sinval, 0, cosval]])
         rotated_data = np.dot(points.reshape((-1, 3)), rotation_matrix)

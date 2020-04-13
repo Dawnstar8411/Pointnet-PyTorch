@@ -4,7 +4,7 @@ import torch.nn as nn
 
 class Transform_net(nn.Module):
     def __init__(self, k):
-        super(Transform_net, self).__init()
+        super(Transform_net, self).__init__()
         self.conv1 = torch.nn.Conv1d(k, 64, 1)
         self.conv2 = torch.nn.Conv1d(64, 128, 1)
         self.conv3 = torch.nn.Conv1d(128, 1024, 1)

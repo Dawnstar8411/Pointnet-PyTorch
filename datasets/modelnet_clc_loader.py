@@ -24,7 +24,7 @@ class ModelNetDataset(Dataset):
             self.data.extend(f['data'][:])
             self.label.extend(f['label'][:])
         self.points = np.array(self.data)
-        self.label = np.label(self.data)
+        self.label = np.array(self.label)
 
     def __getitem__(self, index):
         points = self.points[index]
