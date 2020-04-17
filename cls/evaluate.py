@@ -33,13 +33,9 @@ print("=> will save everything to {}".format(args.save_path))
 
 print("2.Data Loading...")
 
-shape_names_path = Path(args.data_path) / 'shape_names.txt'
-with open(shape_names_path, "r") as f:
-    shape_names_list = [line.strip() for line in f.readlines()]
+shape_names_list = [line.rstrip() for line in open(Path(args.data_path) / 'shape_names.txt', "r")]
 
-test_list_path = Path(args.data_path) / 'test_files.txt'
-with open(test_list_path, "r") as f:
-    test_list = [line.strip() for line in f.readlines()]
+test_list = [line.strip() for line in open(Path(args.data_path) / 'test_files.txt', "r")]
 
 test_points = []
 test_label = []
@@ -47,11 +43,11 @@ test_label = []
 for i in np.arange(len(test_list)):
     h5_filename = test_list[i]
     f = h5py.File(h5_filename)
-    test_points.extend(f['data'][:])
-    test_label.extend(f['label'][:])
+    test_points.append(f['data'][:])
+    test_label.append(f['label'][:])
 
-test_points = np.array(test_points)
-test_label = np.array(test_label)
+test_points = np.concatenate(test_points,axis=0)
+test_label = np.concatenate(test_label,axis=0)
 
 n_pts = args.n_pts
 
@@ -68,7 +64,7 @@ print("4. Create csvfile to save log information")
 
 with open(args.save_path / args.log_full, 'w') as csvfile:
     csv_writer = csv.writer(csvfile, delimiter='\t')
-    csv_writer.writerow(['aaa'])
+    csv_writer.writerow(['Pointnet evaluation'])
 
 print("5. Start Testing!")
 
@@ -102,19 +98,25 @@ def main():
         total_num_class[l] += 1
         total_correct_class[l] += torch.sum(pred_val == label)
 
-        if pred_val != l:
+        if pred_val != l and args.visu:
             img_filename = args.save_path / '{}_label_{}_pred_{}.jpg'.format(error_cnt, shape_names_list[l],
                                                                              shape_names_list[pred_val])
-            output_img = pc_util.point_cloud_three_views(origin_points)
+            output_img = pc_util.point_cloud_three_views(origin_points) # np.squeeze(origin_points)
             scipy.misc.imsave(img_filename, output_img)
             error_cnt += 1
 
     avg_precision = total_correct / total_num
     print('Average_precision:{}'.format(avg_precision))
+    with open(args.save_path / args.log_full, 'w') as csvfile:
+        csv_writer = csv.writer(csvfile, delimiter='\t')
+        csv_writer.writerow(['Average_precision:{}'.format(avg_precision)])
 
     class_accuracies = np.array(total_correct_class) / np.array(total_num_class, dtype=np.float)
     for i, name in enumerate(shape_names_list):
         print('{}: {}'.format(name, class_accuracies[i]))
+        with open(args.save_path / args.log_full, 'w') as csvfile:
+            csv_writer = csv.writer(csvfile, delimiter='\t')
+            csv_writer.writerow(['{}:{}'.format(name, class_accuracies[i])])
 
 
 if __name__ == '__main__':

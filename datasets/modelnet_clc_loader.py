@@ -14,18 +14,17 @@ class ModelNetDataset(Dataset):
         else:
             self.list_path = data_path / 'test_files.txt'
 
-        with open(self.list_path, "r") as f:
-            self.fns = [line.strip() for line in f.readlines()]
-        self.data = []
+        self.fns = [line.rstrip() for line in open(self.list_path,"r")]
+        self.points = []
         self.label = []
 
         for i in np.arange(len(self.fns)):
             h5_filename = self.fns[i]
             f = h5py.File(h5_filename)
-            self.data.extend(f['data'][:])
-            self.label.extend(f['label'][:])
-        self.points = np.array(self.data)
-        self.label = np.array(self.label)
+            self.points.append(f['data'][:])
+            self.label.append(f['label'][:])
+        self.points = np.concatenate(self.points,axis=0)
+        self.label = np.concatenate(self.label,axis=0)
 
     def __getitem__(self, index):
         points = self.points[index]
@@ -36,4 +35,4 @@ class ModelNetDataset(Dataset):
         return torch.from_numpy(points), torch.from_numpy(label)
 
     def __len__(self):
-        return len(self.data)
+        return len(self.points)

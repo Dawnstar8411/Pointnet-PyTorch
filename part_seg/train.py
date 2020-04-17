@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import models
 from config.args_pointnet_part_seg_train import *
-from datasets.shapenet_seg_loader import ModelNetDataset
+from datasets.shapenet_seg_loader import ShapeNetDataset
 from utils import custom_transforms
 from utils.utils import AverageMeter, save_path_formatter
 from utils.loss_functions import feature_transform_regularizer
@@ -41,23 +41,16 @@ print("=> will save everything to {}".format(args.save_path))
 
 print("2.Data Loading...")
 
-# normalize = custom_transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-
 train_transform = custom_transforms.Compose([
-    custom_transforms.select_point_cloud(n_pts=args.n_pts),
-    custom_transforms.rotate_point_cloud(),
-    custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
     custom_transforms.ArrayToTensor(),
 ])
 
 valid_transform = custom_transforms.Compose([
-    custom_transforms.rotate_point_cloud(),
-    custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
     custom_transforms.ArrayToTensor(),
 ])
 
-train_set = ModelNetDataset(Path(args.data_path), npoints=args.n_pts, transform=train_transform, train=True)
-val_set = ModelNetDataset(Path(args.data_path), npoints=args.n_pts, transform=valid_transform, train=False)
+train_set = ShapeNetDataset(Path(args.data_path), npoints=args.n_pts, transform=train_transform, train=True)
+val_set = ShapeNetDataset(Path(args.data_path), npoints=args.n_pts, transform=valid_transform, train=False)
 
 print('{} samples found in train scenes'.format(len(train_set)))
 print('{} samples found in valid scenes'.format(len(val_set)))
@@ -68,16 +61,16 @@ val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_
 
 print("3.Creating Model")
 
-pointnet_cls = models.PointNet_cls(input_transform=True, feature_transform=True).to(device)
+pointnet_part_seg = models.PointNet_part_seg(cls_num=args.num_cls, part_num=args.num_parts, input_transform=True, feature_transform=True).to(device)
 if args.pretrained:
     print('=> using pre-trained weights for PoseNet')
     weights = torch.load(args.pretrained)
-    pointnet_cls.load_state_dict(weights['state_dict'], strict=False)
+    pointnet_part_seg.load_state_dict(weights['state_dict'], strict=False)
 else:
-    pointnet_cls.init_weights()
+    pointnet_part_seg.init_weights()
 
 print("4. Setting Optimization Solver")
-optimizer = torch.optim.Adam(pointnet_cls.parameters(), lr=args.lr, betas=(args.momentum, args.beta),
+optimizer = torch.optim.Adam(pointnet_part_seg.parameters(), lr=args.lr, betas=(args.momentum, args.beta),
                              weight_decay=args.weight_decay)
 
 exp_lr_scheduler_R = lr_scheduler.StepLR(optimizer, step_size=args.decay_step, gamma=args.decay_rate)
@@ -103,8 +96,8 @@ def main():
     best_error = -1
     for epoch in range(args.epochs):
         start_time = time.time()
-        losses, loss_names = train(pointnet_cls, optimizer)
-        errors, error_names = validate(pointnet_cls)
+        losses, loss_names = train(pointnet_part_seg, optimizer)
+        errors, error_names = validate(pointnet_part_seg)
 
         decisive_error = errors[0]
         if best_error < 0:
@@ -115,7 +108,7 @@ def main():
 
         torch.save({
             'epoch': epoch + 1,
-            'state_dict': pointnet_cls.state_dict()
+            'state_dict': pointnet_part_seg.state_dict()
         }, args.save_path / 'pointnet_cls{}.pth.tar'.format(epoch))
 
         if is_best:
@@ -152,10 +145,10 @@ def train(pointnet_cls, optimizer):
     losses = AverageMeter(i=len(loss_names), precision=4)
 
     pointnet_cls.train()
-
-    for i, (points, label) in enumerate(train_loader):
+    # points:(batch_size,3, num_pts) label:(batch_size,1) seg:(batch_size,num_pts) label_ont_hot(batch_size,16)
+    for i, (points, label,seg,label_ont_hot) in enumerate(train_loader):
         targets, trans, trans_feat = pointnet_cls(points)
-        loss_1 = F.nll_loss(label, targets)
+        loss_1 = F.cross_entropy(label, targets)
         loss_2 = feature_transform_regularizer(trans)
         loss_3 = feature_transform_regularizer(trans_feat)
         # 只有输入对其损失   0.001

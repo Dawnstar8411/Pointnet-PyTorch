@@ -43,15 +43,15 @@ print("=> will save everything to {}".format(args.save_path))
 print("2.Data Loading...")
 
 train_transform = custom_transforms.Compose([
-    custom_transforms.select_point_cloud(n_pts=args.n_pts),
+    # custom_transforms.select_point_cloud(n_pts=args.n_pts),
     custom_transforms.rotate_point_cloud(),
     custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
     custom_transforms.ArrayToTensor(),
 ])
 
 valid_transform = custom_transforms.Compose([
-    #custom_transforms.rotate_point_cloud(),
-    #custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
+    # custom_transforms.rotate_point_cloud(),
+    # custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
     custom_transforms.ArrayToTensor(),
 ])
 
@@ -66,8 +66,8 @@ train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, n
 val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
 
 print("3.Creating Model")
-
-pointnet_cls = models.PointNet_cls(K = 40,input_transform=True, feature_transform=True).to(device)
+shutil.copyfile('../models/pointnet_cls.py', args.save_path / 'pointnet_cls.py')
+pointnet_cls = models.PointNet_cls(K=40, input_transform=True, feature_transform=True).to(device)
 if args.pretrained:
     print('=> using pre-trained weights for PoseNet')
     weights = torch.load(args.pretrained)
@@ -93,7 +93,8 @@ with open(args.save_path / args.log_summary, 'w') as csvfile:
 
 with open(args.save_path / args.log_full, 'w') as csvfile:
     csv_writer = csv.writer(csvfile, delimiter='\t')
-    csv_writer.writerow(['total_loss', 'nll_loss','trans_feat_loss','Average precision'])
+    csv_writer.writerow(
+        ['total_loss', 'nll_loss', 'trans_feat_loss', 'Average precision_train' 'Average precision_val'])
 
 print("7. Start Training!")
 
@@ -110,7 +111,7 @@ def main():
             best_error = decisive_error
 
         is_best = decisive_error > best_error
-        best_error = min(best_error, decisive_error)
+        best_error = max(best_error, decisive_error)
 
         torch.save({
             'epoch': epoch + 1,
@@ -134,7 +135,7 @@ def main():
 
         with open(args.save_path / args.log_full, 'a') as csvfile:
             csv_writer = csv.writer(csvfile, delimiter='\t')
-            csv_writer.writerow([losses[0], losses[1], losses[2],errors[0]])
+            csv_writer.writerow([losses[0], losses[1], losses[2], errors[0]])
 
         print("\n---- [Epoch {}/{}] ----".format(epoch, args.epochs))
         print("Train---Total loss:{}, Nll_loss:{} Trans_feat loss:{}".format(losses[0], losses[1], losses[2]))
@@ -146,23 +147,25 @@ def main():
 
 
 def train(pointnet_cls, optimizer):
-    loss_names = ['total_loss', 'nll_loss', 'trans_feat_loss']
+    loss_names = ['total_loss', 'nll_loss', 'trans_feat_loss', 'Average_precision']
     losses = AverageMeter(i=len(loss_names), precision=4)
 
     pointnet_cls.train()
 
     for i, (points, label) in enumerate(train_loader):
         label = torch.squeeze(label)
-        points,label = points.to(device).float(),label.to(device).long()
+        points, label = points.to(device).float(), label.to(device).long()
         targets, trans_feat = pointnet_cls(points)
-        loss_1 = F.nll_loss(targets,label)
+        pred_val = torch.argmax(targets, 1)
+        correct = torch.sum(pred_val == label)
+        loss_1 = F.cross_entropy(targets, label)
         loss_2 = feature_transform_regularizer(trans_feat)
         loss = loss_1 + 0.001 * loss_2
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        losses.update([loss.item(), loss_1.item(), loss_2.item()],args.batch_size)
+        losses.update([loss.item(), loss_1.item(), loss_2.item(), correct.item() / args.batch_size], args.batch_size)
 
     return losses.avg, loss_names
 
@@ -179,9 +182,9 @@ def validate(pointnet_cls):
         points, label = points.to(device).float(), label.to(device).long()
         targets, _ = pointnet_cls(points)
 
-        pred_val = torch.argmax(targets,1)
+        pred_val = torch.argmax(targets, 1)
         correct = torch.sum(pred_val == label)
-        errors.update([correct.item()/args.batch_size],args.batch_size)
+        errors.update([correct.item() / args.batch_size], args.batch_size)
 
     return errors.avg, error_names
 

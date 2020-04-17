@@ -6,9 +6,10 @@ from .transform_nets import Transform_net
 
 
 class PointNet_part_seg(nn.Module):
-    def __init__(self, K=10, input_transform=True, feature_transform=True):
+    def __init__(self, cls_num=16, part_num=10, input_transform=True, feature_transform=True):
         super(PointNet_part_seg, self).__init__()
-        self.K = K
+        self.cls_num = cls_num
+        self.part_num = part_num
         self.input_transform = input_transform
         self.feature_transform = feature_transform
 
@@ -16,39 +17,39 @@ class PointNet_part_seg(nn.Module):
             self.stn = Transform_net(k=3)
 
         self.conv1_1 = torch.nn.conv1d(3, 64, 1)
+        self.bn1_1 = nn.BatchNorm1d(64)
         self.conv1_2 = torch.nn.Conv1d(64, 128, 1)
+        self.bn1_2 = nn.BatchNorm1d(128)
         self.conv1_3 = torch.nn.Conv1d(128, 128, 1)
-
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.bn3 = nn.BatchNorm1d(128)
+        self.bn1_3 = nn.BatchNorm1d(128)
 
         if self.feature_transform:
-            self.fstn = Transform_net(k=64)
+            self.fstn = Transform_net(k=128)
 
-        self.conv2_1 = torch.nn.Conv1d(128,512,1)
-        self.conv2_2 = torch.nn.Conv1d(512,2048,1)
+        self.conv2_1 = torch.nn.Conv1d(128, 512, 1)
+        self.bn2_1 = nn.BatchNorm1d(512)
+        self.conv2_2 = torch.nn.Conv1d(512, 2048, 1)
+        self.bn2_2 = nn.BatchNorm1d(2048)
 
-        self.fc1 = nn.Linear(2048, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.dropout = nn.Dropout(p=0.3)
-        self.fc3 = nn.Linear(256, cat_num)
-        self.dropout3_1 = nn.Dropout(p=0.3)
-        self.dropout3_2 = nn.Dropout(p=0.3)
-        self.bn3_1 = nn.BatchNorm1d(512)
+        self.fc3_1 = nn.Linear(2048, 256)
+        self.bn3_1 = nn.BatchNorm1d(256)
+        self.fc3_2 = nn.Linear(256, 256)
         self.bn3_2 = nn.BatchNorm1d(256)
+        self.dropout3_2 = nn.Dropout(p=0.3)
+        self.fc3_3 = nn.Linear(256, self.cls_num)
 
-
-        self.conv4 = torch.nn.Conv1d(1088, 512, 1)
-        self.conv5 = torch.nn.Conv1d(512, 256, 1)
-        self.conv6 = torch.nn.Conv1d(256, 128, 1)
-        self.conv7 = torch.nn.Conv1d(128, self.k, 1)
-        self.bn4 = nn.BatchNorm1d(512)
-        self.bn5 = nn.BatchNorm1d(256)
-        self.bn6 = nn.BatchNorm1d(128)
+        self.conv4_1 = torch.nn.Conv1d(4944, 256, 1)
+        self.bn4_1 = nn.BatchNorm1d(256)
+        self.dropout4_1 = nn.Dropout(p=0.2)
+        self.conv4_2 = torch.nn.Conv1d(256, 256, 1)
+        self.bn4_2 = nn.BatchNorm1d(256)
+        self.dropout4_2 = nn.Dropout(p=0.2)
+        self.conv4_3 = torch.nn.Conv1d(256, 128, 1)
+        self.bn4_3 = nn.BatchNorm1d(128)
+        self.conv4_4 = torch.nn.Conv1d(128, self.part_num)
         self.relu = nn.LeakyReLU()
 
-    def forward(self, x):
+    def forward(self, x, input_label):
         n_pts = x.size()[2]
         if self.input_transform:
             trans = self.stn(x)
@@ -58,27 +59,38 @@ class PointNet_part_seg(nn.Module):
         else:
             trans = None
 
-        x = self.relu(self.bn1(self.conv1(x)))
-
+        out1 = self.relu(self.bn1_1(self.conv1_1(x)))
+        out2 = self.relu(self.bn1_2(self.conv1_2(out1)))
+        out3 = self.relu(self.bn1_3(self.conv1_3(out2)))
+        feature_trans = out3
         if self.feature_transform:
-            trans_feat = self.fstn(x)
-            x = x.transpose(2, 1)
-            x = torch.bmm(x, trans_feat)
-            x = x.transpose(2, 1)
+            trans_feat = self.fstn(out3)
+            feature_trans = feature_trans.transpose(2, 1)
+            feature_trans = torch.bmm(feature_trans, trans_feat)
+            feature_trans= feature_trans.transpose(2, 1)
         else:
             trans_feat = None
-        pointfeat = x
-        x = self.relu(self.bn2(self.conv2(x)))
-        x = self.bn3(self.conv3(x))
-        x = torch.max(x, 2, keepdim=True)[0]
-        x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)
-        x = torch.cat([x, pointfeat], 1)
 
-        x = self.relu(self.bn4(self.conv4(x)))
-        x = self.relu(self.bn5(self.conv5(x)))
-        x = self.relu(self.bn6(self.conv6(x)))
-        x = self.conv7(x)
-        x = x.transpose(2, 1).contiguous()  # (batchsize,n_pts, self.k)
-        x = F.log_softmax(x.view(-1, self.K), dim=-1)
-        x = x.view(-1, n_pts, self.K)
-        return x, trans_feat
+        out4 = self.relu(self.bn2_1(self.conv2_1(feature_trans)))
+        out5 = self.relu(self.bn2_2(self.conv2_2(out4)))
+        out_max = torch.max(out5, 2)[0]
+
+        x = out_max.view(-1, 2048)
+        x = self.relu(self.bn3_1(self.fc3_1(x)))
+        x = self.relu(self.bn3_2(self.fc3_2(x)))
+        x = self.dropout3_2(x)
+        out_cls = self.fc3_3(x)
+
+
+        out_max = torch.cat([out_max, input_label], 1)
+        out_max = out_max.view(-1, 2048+self.cls_num, 1).repeat(1, 1, n_pts)
+        concat = torch.cat([out_max, out1, out2, out3, out4, out5], 1)
+
+        x = self.relu(self.bn4_1(self.conv4_1(concat)))
+        x = self.dropout4_1(x)
+        x = self.relu(self.bn4_2(self.conv4_2(x)))
+        x = self.dropout4_2(x)
+        x = self.relu(self.bn4_3(self.conv4_3(x)))
+        out_seg = self.conv4_4(x)
+
+        return out_cls, out_seg, trans_feat

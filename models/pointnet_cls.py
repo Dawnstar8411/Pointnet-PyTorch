@@ -72,7 +72,6 @@ class PointNet_cls(nn.Module):
         x = self.relu(self.bn3_2(self.fc3_2(x)))
         x = self.dropout3_2(x)
         x = self.fc3_3(x)
-        x = F.log_softmax(x, dim=1)
         return x, trans_feat
 
     def init_weights(self):
