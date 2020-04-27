@@ -197,7 +197,7 @@ def draw_point_cloud(input_points, canvaszSize=500, space=200, diameter=25,
     if normalize:
         centroid = np.mean(points, axis=0)
         points -= centroid
-        furthest_distance = np.max(np.sqrt(np.sum(abs(points) ** 2), axis=1))
+        furthest_distance = np.max(np.sqrt(np.sum(abs(points) ** 2, axis=-1)))
         points /= furthest_distance
 
     # Pre-compute the Gaussian disk
@@ -220,7 +220,7 @@ def draw_point_cloud(input_points, canvaszSize=500, space=200, diameter=25,
     max_depth = np.max(points[:, 2])
 
     for i in range(points.shape[0]):
-        j = points.shape[0] - i - i
+        j = points.shape[0] - 1 - i
         x = points[j, 0]
         y = points[j, 1]
         xc = canvaszSize / 2 + (x * space)
@@ -231,7 +231,7 @@ def draw_point_cloud(input_points, canvaszSize=500, space=200, diameter=25,
         px = dx + xc
         py = dy + yc
 
-        image[px, py] - image[px, py] * 0.7 + dv * (max_depth - points[j, 2]) * 0.3
+        image[px, py] = image[px, py] * 0.7 + dv * (max_depth - points[j, 2]) * 0.3
     image = image / np.max(image)
     return image
 

@@ -1,5 +1,3 @@
-import random
-
 import numpy as np
 
 
@@ -76,12 +74,12 @@ class jitter_point_cloud(object):
 
 
 class select_point_cloud(object):
-    def __init__(self, n_pts=2048):
+    def __init__(self, n_pts=1024):
         self.n_pts = n_pts
 
     def __call__(self, points):
-        choice = random.sample(range(0, 2048), self.n_pts)
-        points = points[choice, :]
+        # choice = random.sample(range(0, 2048), self.n_pts)
+        points = points[0:self.n_pts, :]
         return points
 
 

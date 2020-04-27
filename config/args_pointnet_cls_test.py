@@ -19,8 +19,8 @@ parser.add_argument('--log_full', default='test_log_full.csv', metavar='PATH')
 parser.add_argument('--no_cuda', default=False, type=bool)
 
 # 具体算法相关
-parser.add_argument('--n_pts', type=int, default=2048, help='Point Number [256/512/1024/2048] [default: 2480]')
-parser.add_argument('--num_classes', type=int, default=40, help='number of classes')
+parser.add_argument('--n_pts', type=int, default=1024, help='Point Number [256/512/1024/2048] [default: 2480]')
+parser.add_argument('--num_cls', type=int, default=40, help='number of classes')
 parser.add_argument('--visu', type=bool, default=True, help='whether to visualize the misclassified point cloud.')
 # 是否为debug模式
 parser.add_argument('--is_debug', type=bool, default=False)

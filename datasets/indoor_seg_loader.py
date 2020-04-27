@@ -1,20 +1,19 @@
 import h5py
 import numpy as np
 import torch
-from path import Path
 from torch.utils.data import Dataset
 
 
 class Indoor3dDataset(Dataset):
-    def __init__(self, data_path, npoints=4096, test_area=6, transform=None, train=True):
-        self.npoints = npoints
+    def __init__(self, data_path, n_pts=4096, test_area=6, transform=None, train=True):
+        self.n_pts = n_pts
         self.transform = transform
         self.train = train
 
         self.all_files_path = data_path / 'all_files.txt'
         self.room_file_path = data_path / 'room_filelist.txt'
 
-        self.all_file_list = [data_path / line.rstrip() for line in open(self.all_file_path, "r")]
+        self.all_file_list = [data_path / line.rstrip() for line in open(self.all_files_path, "r")]
 
         self.room_file_list = [line.rstrip() for line in open(self.room_file_path, "r")]
 
@@ -26,8 +25,8 @@ class Indoor3dDataset(Dataset):
             f = h5py.File(h5_filename)
             self.points.append(f['data'][:])
             self.label.append(f['label'][:])
-        self.points = np.concatenate(self.points, axis=0)
-        self.label = np.concatenate(self.label, axis=0)
+        self.points = np.concatenate(self.points, axis=0)  # （num_samples,n_pts,3）
+        self.label = np.concatenate(self.label, axis=0)  # (num_samples,n_pts)
 
         self.test_area = 'Area_' + str(test_area)
 

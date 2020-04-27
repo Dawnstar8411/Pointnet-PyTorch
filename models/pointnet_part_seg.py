@@ -6,7 +6,7 @@ from .transform_nets import Transform_net
 
 
 class PointNet_part_seg(nn.Module):
-    def __init__(self, cls_num=16, part_num=10, input_transform=True, feature_transform=True):
+    def __init__(self, cls_num=16, part_num=50, input_transform=True, feature_transform=True):
         super(PointNet_part_seg, self).__init__()
         self.cls_num = cls_num
         self.part_num = part_num
@@ -14,9 +14,9 @@ class PointNet_part_seg(nn.Module):
         self.feature_transform = feature_transform
 
         if self.input_transform:
-            self.stn = Transform_net(k=3)
+            self.stn = Transform_net(in_channels=3)
 
-        self.conv1_1 = torch.nn.conv1d(3, 64, 1)
+        self.conv1_1 = torch.nn.Conv1d(3, 64, 1)
         self.bn1_1 = nn.BatchNorm1d(64)
         self.conv1_2 = torch.nn.Conv1d(64, 128, 1)
         self.bn1_2 = nn.BatchNorm1d(128)
@@ -24,7 +24,7 @@ class PointNet_part_seg(nn.Module):
         self.bn1_3 = nn.BatchNorm1d(128)
 
         if self.feature_transform:
-            self.fstn = Transform_net(k=128)
+            self.fstn = Transform_net(in_channels=128)
 
         self.conv2_1 = torch.nn.Conv1d(128, 512, 1)
         self.bn2_1 = nn.BatchNorm1d(512)
@@ -46,8 +46,7 @@ class PointNet_part_seg(nn.Module):
         self.dropout4_2 = nn.Dropout(p=0.2)
         self.conv4_3 = torch.nn.Conv1d(256, 128, 1)
         self.bn4_3 = nn.BatchNorm1d(128)
-        self.conv4_4 = torch.nn.Conv1d(128, self.part_num)
-        self.relu = nn.LeakyReLU()
+        self.conv4_4 = torch.nn.Conv1d(128, self.part_num, 1)
 
     def forward(self, x, input_label):
         n_pts = x.size()[2]
@@ -59,38 +58,48 @@ class PointNet_part_seg(nn.Module):
         else:
             trans = None
 
-        out1 = self.relu(self.bn1_1(self.conv1_1(x)))
-        out2 = self.relu(self.bn1_2(self.conv1_2(out1)))
-        out3 = self.relu(self.bn1_3(self.conv1_3(out2)))
+        out1 = F.leaky_relu(self.bn1_1(self.conv1_1(x)))
+        out2 = F.leaky_relu(self.bn1_2(self.conv1_2(out1)))
+        out3 = F.leaky_relu(self.bn1_3(self.conv1_3(out2)))
         feature_trans = out3
         if self.feature_transform:
             trans_feat = self.fstn(out3)
             feature_trans = feature_trans.transpose(2, 1)
             feature_trans = torch.bmm(feature_trans, trans_feat)
-            feature_trans= feature_trans.transpose(2, 1)
+            feature_trans = feature_trans.transpose(2, 1)
         else:
             trans_feat = None
 
-        out4 = self.relu(self.bn2_1(self.conv2_1(feature_trans)))
-        out5 = self.relu(self.bn2_2(self.conv2_2(out4)))
+        out4 = F.leaky_relu(self.bn2_1(self.conv2_1(feature_trans)))
+        out5 = F.leaky_relu(self.bn2_2(self.conv2_2(out4)))
         out_max = torch.max(out5, 2)[0]
-
         x = out_max.view(-1, 2048)
-        x = self.relu(self.bn3_1(self.fc3_1(x)))
-        x = self.relu(self.bn3_2(self.fc3_2(x)))
+
+        x = F.leaky_relu(self.bn3_1(self.fc3_1(x)))
+        x = F.leaky_relu(self.bn3_2(self.fc3_2(x)))
         x = self.dropout3_2(x)
         out_cls = self.fc3_3(x)
 
-
         out_max = torch.cat([out_max, input_label], 1)
-        out_max = out_max.view(-1, 2048+self.cls_num, 1).repeat(1, 1, n_pts)
+        out_max = out_max.view(-1, 2048 + self.cls_num, 1).repeat(1, 1, n_pts)
         concat = torch.cat([out_max, out1, out2, out3, out4, out5], 1)
 
-        x = self.relu(self.bn4_1(self.conv4_1(concat)))
+        x = F.leaky_relu(self.bn4_1(self.conv4_1(concat)))
         x = self.dropout4_1(x)
-        x = self.relu(self.bn4_2(self.conv4_2(x)))
+        x = F.leaky_relu(self.bn4_2(self.conv4_2(x)))
         x = self.dropout4_2(x)
-        x = self.relu(self.bn4_3(self.conv4_3(x)))
+        x = F.leaky_relu(self.bn4_3(self.conv4_3(x)))
         out_seg = self.conv4_4(x)
 
         return out_cls, out_seg, trans_feat
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                nn.init.xavier_uniform_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight.data)
+                if m.bias is not None:
+                    m.bias.data.zero_()

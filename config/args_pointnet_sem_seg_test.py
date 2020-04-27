@@ -8,7 +8,7 @@ parser.add_argument('--model_name', type=str, default="pointnet_sem_seg")
 parser.add_argument('--seed', default=2048, type=int, help="seed for random function and network initialization.")
 
 # 读取与保存
-parser.add_argument('--data_path', default='/home/yc/chen/data/Pointnet/indoor3d_sem_seg_hdf5_data/', metavar='DIR',
+parser.add_argument('--data_path', default='/home/yc/chen/data/Poin_cloud/indoor3d/hdf5/', metavar='DIR',
                     help='path to dataset')
 parser.add_argument('--pretrained', default='./checkpoints/', metavar='PATH')
 parser.add_argument('--output_path',default='./outputs')

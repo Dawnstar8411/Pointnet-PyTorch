@@ -5,8 +5,8 @@ from torch.utils.data import Dataset
 
 
 class ShapeNetDataset(Dataset):
-    def __init__(self, data_path, npoints=2048, transform=None, train=True):
-        self.npoints = npoints
+    def __init__(self, data_path, n_pts=2048, transform=None, train=True):
+        self.n_pts = n_pts
         self.transform = transform
         self.train = train
 
@@ -15,7 +15,7 @@ class ShapeNetDataset(Dataset):
         else:
             self.list_path = data_path / 'val_hdf5_file_list.txt'
 
-        self.fns = [line.strip() for line in open(self.list_path, "r")]
+        self.fns = [data_path / line.rstrip() for line in open(self.list_path, "r")]
 
         self.points = []
         self.label = []
@@ -29,14 +29,14 @@ class ShapeNetDataset(Dataset):
             self.seg.append(f['pid'][:])
         self.points = np.concatenate(self.points, axis=0)  # (num_samples, num_pts, 3)
         self.label = np.concatenate(self.label, axis=0)  # (num_samples,1)
-        self.seg = np.concatename(self.label, axis=0)  # (num_samples, num_pts)
+        self.seg = np.concatenate(self.seg, axis=0)  # (num_samples, num_pts)
 
     def __getitem__(self, index):
         points = self.points[index]
         label = self.label[index]
         seg = self.seg[index]
-        label_ont_hot = np.zeros(1, 16)
-        label_ont_hot[0, label[0]] = 1
+        label_ont_hot = np.zeros(16)
+        label_ont_hot[label[0]] = 1
         if self.transform:
             points = self.transform(points)
 

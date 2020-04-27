@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import models
 from config.args_pointnet_cls_train import *
-from datasets.modelnet_clc_loader import ModelNetDataset
+from datasets.modelnet_cls_loader import ModelNetDataset
 from utils import custom_transforms
 from utils.loss_functions import feature_transform_regularizer
 from utils.utils import AverageMeter, save_path_formatter
@@ -43,20 +43,19 @@ print("=> will save everything to {}".format(args.save_path))
 print("2.Data Loading...")
 
 train_transform = custom_transforms.Compose([
-    # custom_transforms.select_point_cloud(n_pts=args.n_pts),
+    custom_transforms.select_point_cloud(n_pts=args.n_pts),
     custom_transforms.rotate_point_cloud(),
     custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
     custom_transforms.ArrayToTensor(),
 ])
 
 valid_transform = custom_transforms.Compose([
-    # custom_transforms.rotate_point_cloud(),
-    # custom_transforms.jitter_point_cloud(sigma=0.01, clip=0.05),
+    custom_transforms.select_point_cloud(n_pts=args.n_pts),
     custom_transforms.ArrayToTensor(),
 ])
 
-train_set = ModelNetDataset(Path(args.data_path), npoints=args.n_pts, transform=train_transform, train=True)
-val_set = ModelNetDataset(Path(args.data_path), npoints=args.n_pts, transform=valid_transform, train=False)
+train_set = ModelNetDataset(Path(args.data_path), n_pts=args.n_pts, transform=train_transform, train=True)
+val_set = ModelNetDataset(Path(args.data_path), n_pts=args.n_pts, transform=valid_transform, train=False)
 
 print('{} samples found in train scenes'.format(len(train_set)))
 print('{} samples found in valid scenes'.format(len(val_set)))
@@ -67,7 +66,7 @@ val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_
 
 print("3.Creating Model")
 shutil.copyfile('../models/pointnet_cls.py', args.save_path / 'pointnet_cls.py')
-pointnet_cls = models.PointNet_cls(K=40, input_transform=True, feature_transform=True).to(device)
+pointnet_cls = models.PointNet_cls(num_cls=40, input_transform=True, feature_transform=True).to(device)
 if args.pretrained:
     print('=> using pre-trained weights for PoseNet')
     weights = torch.load(args.pretrained)
@@ -89,12 +88,12 @@ print("6. Create csvfile to save log information")
 
 with open(args.save_path / args.log_summary, 'w') as csvfile:
     csv_writer = csv.writer(csvfile, delimiter='\t')
-    csv_writer.writerow(['train_loss', 'Average precision'])
+    csv_writer.writerow(['Total Train Loss', 'Validation Classification Accuracy'])
 
 with open(args.save_path / args.log_full, 'w') as csvfile:
     csv_writer = csv.writer(csvfile, delimiter='\t')
     csv_writer.writerow(
-        ['total_loss', 'nll_loss', 'trans_feat_loss', 'Average precision_train' 'Average precision_val'])
+        ['total_loss', 'cls_loss', 'trans_feat_loss', 'Train cls Accuracy' 'Validation cls Accuracy'])
 
 print("7. Start Training!")
 
@@ -135,11 +134,13 @@ def main():
 
         with open(args.save_path / args.log_full, 'a') as csvfile:
             csv_writer = csv.writer(csvfile, delimiter='\t')
-            csv_writer.writerow([losses[0], losses[1], losses[2], errors[0]])
+            csv_writer.writerow([losses[0], losses[1], losses[2], losses[3], errors[0]])
 
         print("\n---- [Epoch {}/{}] ----".format(epoch, args.epochs))
-        print("Train---Total loss:{}, Nll_loss:{} Trans_feat loss:{}".format(losses[0], losses[1], losses[2]))
-        print("Valid---Average Precision:{}".format(errors[0]))
+        print(
+            "Train---Total loss:{}, Cls loss:{}, Trans_feat loss:{}, Accuracy:{}".format(losses[0], losses[1],
+                                                                                         losses[2], losses[3]))
+        print("Valid---Accuracy:{}".format(errors[0]))
 
         epoch_left = args.epochs - (epoch + 1)
         time_left = datetime.timedelta(seconds=epoch_left * (time.time() - start_time))
@@ -147,16 +148,17 @@ def main():
 
 
 def train(pointnet_cls, optimizer):
-    loss_names = ['total_loss', 'nll_loss', 'trans_feat_loss', 'Average_precision']
+    loss_names = ['total_loss', 'cls_loss', 'trans_feat_loss', 'Train Accuracy']
     losses = AverageMeter(i=len(loss_names), precision=4)
 
     pointnet_cls.train()
 
+    # points:(B,3,n_pts)  label:(B,1)
     for i, (points, label) in enumerate(train_loader):
-        label = torch.squeeze(label)
+        label = torch.squeeze(label) # (B,)
         points, label = points.to(device).float(), label.to(device).long()
-        targets, trans_feat = pointnet_cls(points)
-        pred_val = torch.argmax(targets, 1)
+        targets, trans_feat = pointnet_cls(points) # targets:(B, args.num_cls)
+        pred_val = torch.argmax(targets, 1)  # (B,)
         correct = torch.sum(pred_val == label)
         loss_1 = F.cross_entropy(targets, label)
         loss_2 = feature_transform_regularizer(trans_feat)
@@ -172,17 +174,16 @@ def train(pointnet_cls, optimizer):
 
 @torch.no_grad()
 def validate(pointnet_cls):
-    error_names = ['Average Precision']
+    error_names = ['Accuracy']
     errors = AverageMeter(i=len(error_names), precision=4)
-
     pointnet_cls.eval()
-
+    # points:(B,3,n_pts)  label:(B,1)
     for i, (points, label) in enumerate(val_loader):
-        label = torch.squeeze(label)
+        label = torch.squeeze(label) # (B,)
         points, label = points.to(device).float(), label.to(device).long()
-        targets, _ = pointnet_cls(points)
+        targets, _ = pointnet_cls(points) # targets:(B, args.num_cls)
 
-        pred_val = torch.argmax(targets, 1)
+        pred_val = torch.argmax(targets, 1) # (B,)
         correct = torch.sum(pred_val == label)
         errors.update([correct.item() / args.batch_size], args.batch_size)
 

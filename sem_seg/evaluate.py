@@ -35,7 +35,6 @@ print("2.Data Loading...")
 
 room_file_path = Path(args.data_path) / 'room_filelist.txt'
 
-
 shape_names_path = Path(args.data_path) / 'shape_names.txt'
 with open(shape_names_path, "r") as f:
     shape_names_list = [line.strip() for line in f.readlines()]
@@ -123,7 +122,7 @@ def main():
         print('{}: {}'.format(name, class_accuracies[i]))
         with open(args.save_path / args.log_full, 'w') as csvfile:
             csv_writer = csv.writer(csvfile, delimiter='\t')
-            csv_writer.writerow(['{}:{}'.format(name,class_accuracies[i])])
+            csv_writer.writerow(['{}:{}'.format(name, class_accuracies[i])])
 
 
 if __name__ == '__main__':

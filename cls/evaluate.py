@@ -3,8 +3,8 @@ import warnings
 
 import h5py
 import numpy as np
-import scipy.misc
 import torch
+from PIL import Image
 from path import Path
 
 import models
@@ -35,7 +35,7 @@ print("2.Data Loading...")
 
 shape_names_list = [line.rstrip() for line in open(Path(args.data_path) / 'shape_names.txt', "r")]
 
-test_list = [line.strip() for line in open(Path(args.data_path) / 'test_files.txt', "r")]
+test_list = [Path(args.data_path) / line.rstrip() for line in open(Path(args.data_path) / 'test_files.txt', "r")]
 
 test_points = []
 test_label = []
@@ -46,14 +46,13 @@ for i in np.arange(len(test_list)):
     test_points.append(f['data'][:])
     test_label.append(f['label'][:])
 
-test_points = np.concatenate(test_points,axis=0)
-test_label = np.concatenate(test_label,axis=0)
+test_points = np.concatenate(test_points, axis=0)  # (num_samples,n_pts,3)
+test_label = np.concatenate(test_label, axis=0)  # (num_samples,1)
 
-n_pts = args.n_pts
 
 print("3.Creating Model")
 
-pointnet_cls = models.PointNet_cls(K=40, input_transform=True, feature_transform=True).to(device)
+pointnet_cls = models.PointNet_cls(num_cls=args.num_cls, input_transform=True, feature_transform=True).to(device)
 
 if args.pretrained:
     print('=> using pre-trained weights for PoseNet')
@@ -64,7 +63,7 @@ print("4. Create csvfile to save log information")
 
 with open(args.save_path / args.log_full, 'w') as csvfile:
     csv_writer = csv.writer(csvfile, delimiter='\t')
-    csv_writer.writerow(['Pointnet evaluation'])
+    csv_writer.writerow(['PointNet Classification Accuracy Evaluation!'])
 
 print("5. Start Testing!")
 
@@ -74,11 +73,11 @@ def main():
     pointnet_cls.eval()
     total_correct = 0
     total_num = 0
-    total_num_class = [0 for _ in range(args.num_classes)]
-    total_correct_class = [0 for _ in range(args.num_classes)]
+    total_num_class = [0 for _ in range(args.num_cls)]
+    total_correct_class = [0 for _ in range(args.num_cls)]
     error_cnt = 0
     for index in range(len(test_points)):
-        origin_points = test_points[index]
+        origin_points = test_points[index][0:args.n_pts, :]
         points = np.transpose(origin_points, (1, 0))
         points = np.expand_dims(points, 0)
         label = test_label[index]
@@ -89,27 +88,31 @@ def main():
         targets, _ = pointnet_cls(points)
 
         pred_val = torch.argmax(targets, 1)
+
         correct = torch.sum(pred_val == label)
 
         total_correct += correct.item()
         total_num += 1
 
-        l = label[0]
-        total_num_class[l] += 1
-        total_correct_class[l] += torch.sum(pred_val == label)
+        label = label.item()
+        pred_val = pred_val.item()
 
-        if pred_val != l and args.visu:
-            img_filename = args.save_path / '{}_label_{}_pred_{}.jpg'.format(error_cnt, shape_names_list[l],
+        total_num_class[label] += 1
+        total_correct_class[label] += np.sum(pred_val == label)
+
+        if pred_val != label and args.visu:
+            img_filename = args.save_path / '{}_label_{}_pred_{}.jpg'.format(error_cnt, shape_names_list[label],
                                                                              shape_names_list[pred_val])
-            output_img = pc_util.point_cloud_three_views(origin_points) # np.squeeze(origin_points)
-            scipy.misc.imsave(img_filename, output_img)
+            output_img = pc_util.point_cloud_three_views(origin_points)  # np.squeeze(origin_points)
+            im = Image.fromarray(output_img)
+            im.save(img_filename)
             error_cnt += 1
 
     avg_precision = total_correct / total_num
-    print('Average_precision:{}'.format(avg_precision))
+    print('Accuracy:{}'.format(avg_precision))
     with open(args.save_path / args.log_full, 'w') as csvfile:
         csv_writer = csv.writer(csvfile, delimiter='\t')
-        csv_writer.writerow(['Average_precision:{}'.format(avg_precision)])
+        csv_writer.writerow(['Accuracy:{}'.format(avg_precision)])
 
     class_accuracies = np.array(total_correct_class) / np.array(total_num_class, dtype=np.float)
     for i, name in enumerate(shape_names_list):
